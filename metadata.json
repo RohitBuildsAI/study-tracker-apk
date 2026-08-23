@@ -1,0 +1,6 @@
+{
+  "name": "StudyTrack",
+  "description": "A modern study productivity app to set daily study goals, schedule tasks, track study time, build streaks, and analyze learning progress.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
