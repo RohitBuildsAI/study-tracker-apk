@@ -101,6 +101,59 @@ object DateTimeUtils {
         return dates
     }
 
+    fun formatTime(hour: Int, minute: Int): String {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, hour)
+        cal.set(Calendar.MINUTE, minute)
+        return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
+    }
+
+    fun parseTimeStringToHourMinute(timeStr: String): Pair<Int, Int>? {
+        if (timeStr.isBlank()) return null
+        val clean = timeStr.trim().uppercase()
+        val formats = listOf(
+            SimpleDateFormat("hh:mm a", Locale.getDefault()),
+            SimpleDateFormat("h:mm a", Locale.getDefault()),
+            SimpleDateFormat("HH:mm", Locale.getDefault()),
+            SimpleDateFormat("H:mm", Locale.getDefault()),
+            SimpleDateFormat("h:mma", Locale.getDefault()),
+            SimpleDateFormat("hh:mma", Locale.getDefault())
+        )
+        for (format in formats) {
+            try {
+                val date = format.parse(clean)
+                if (date != null) {
+                    val cal = Calendar.getInstance()
+                    cal.time = date
+                    return Pair(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    fun calculateDurationBetweenTimes(startTimeStr: String, endTimeStr: String): Int? {
+        val start = parseTimeStringToHourMinute(startTimeStr) ?: return null
+        val end = parseTimeStringToHourMinute(endTimeStr) ?: return null
+        val startMins = start.first * 60 + start.second
+        var endMins = end.first * 60 + end.second
+        if (endMins < startMins) {
+            // End time next day or past midnight
+            endMins += 24 * 60
+        }
+        val diff = endMins - startMins
+        return if (diff > 0) diff else null
+    }
+
+    fun addMinutesToTime(startTimeStr: String, minutesToAdd: Int): String? {
+        val start = parseTimeStringToHourMinute(startTimeStr) ?: return null
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, start.first)
+        cal.set(Calendar.MINUTE, start.second)
+        cal.add(Calendar.MINUTE, minutesToAdd)
+        return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
+    }
+
     fun getMonthDays(year: Int, month: Int): List<DateInfo> {
         val cal = Calendar.getInstance()
         cal.set(Calendar.YEAR, year)
