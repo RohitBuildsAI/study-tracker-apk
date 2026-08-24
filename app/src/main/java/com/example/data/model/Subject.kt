@@ -13,3 +13,12 @@ data class Subject(
     val isCustom: Boolean = false,
     val targetHoursPerWeek: Float = 5f
 )
+
+data class SubjectWeeklyProgress(
+    val subject: Subject,
+    val studiedMinutesThisWeek: Int,
+    val targetMinutesThisWeek: Int,
+    val progressRatio: Float,
+    val isGoalMet: Boolean,
+    val sessionCount: Int
+)

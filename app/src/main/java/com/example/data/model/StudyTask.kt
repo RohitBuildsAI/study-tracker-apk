@@ -20,7 +20,7 @@ data class StudyTask(
     val priority: TaskPriority = TaskPriority.MEDIUM,
     val status: TaskStatus = TaskStatus.NOT_STARTED,
     val reminderEnabled: Boolean = false,
-    val reminderMinutesBefore: Int = 10,
+    val reminderMinutesBefore: Int = 15,
     val isPomodoro: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )

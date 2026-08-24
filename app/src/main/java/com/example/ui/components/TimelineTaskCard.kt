@@ -34,6 +34,7 @@ fun TimelineTaskCard(
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
+    onToggleReminder: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     showTimelineConnector: Boolean = false
 ) {
@@ -76,7 +77,7 @@ fun TimelineTaskCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Header Row: Subject, Priority, Status, Menu
+            // Header Row: Subject, Priority, Reminder Pill, Status, Menu
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -84,7 +85,8 @@ fun TimelineTaskCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     SubjectBadge(
                         subjectName = task.subjectName,
@@ -103,6 +105,46 @@ fun TimelineTaskCard(
                             color = priorityColor,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
+                    }
+
+                    // Interactive Reminder Toggle Chip / Indicator
+                    Surface(
+                        shape = CircleShape,
+                        color = if (task.reminderEnabled) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        },
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (task.reminderEnabled) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            }
+                        ),
+                        modifier = Modifier
+                            .clickable(enabled = onToggleReminder != null) { onToggleReminder?.invoke() }
+                            .testTag("toggle_reminder_${task.id}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (task.reminderEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsNone,
+                                contentDescription = if (task.reminderEnabled) "Reminder Enabled" else "Reminder Disabled",
+                                tint = if (task.reminderEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = if (task.reminderEnabled) "${task.reminderMinutesBefore}m" else "Off",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (task.reminderEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     if (task.isPomodoro) {
@@ -139,6 +181,22 @@ fun TimelineTaskCard(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false }
                     ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(if (task.reminderEnabled) "Turn Off Reminder" else "Turn On 15m Reminder")
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (task.reminderEnabled) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onToggleReminder?.invoke()
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("Edit Task") },
                             leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },

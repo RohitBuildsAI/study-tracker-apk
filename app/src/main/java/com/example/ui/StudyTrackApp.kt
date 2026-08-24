@@ -45,12 +45,14 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
     val allSessions by viewModel.allSessions.collectAsStateWithLifecycle()
     val allDailyGoals by viewModel.allDailyGoals.collectAsStateWithLifecycle()
     val todayGoal by viewModel.todayGoal.collectAsStateWithLifecycle()
+    val weeklySubjectProgress by viewModel.weeklySubjectProgress.collectAsStateWithLifecycle()
     val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
 
     val showAddTaskDialog by viewModel.showAddTaskDialog.collectAsStateWithLifecycle()
     val taskToEdit by viewModel.taskToEdit.collectAsStateWithLifecycle()
     val showAddSubjectDialog by viewModel.showAddSubjectDialog.collectAsStateWithLifecycle()
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
+    val isFocusModeRequested by viewModel.isFocusModeRequested.collectAsStateWithLifecycle()
     val activeTimerState by viewModel.activeTimerState.collectAsStateWithLifecycle()
 
     var showQuickStudyDialog by remember { mutableStateOf(false) }
@@ -133,6 +135,7 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                             tasks = tasksForToday,
                             dailyGoal = todayGoal,
                             userSettings = userSettings,
+                            weeklySubjectProgress = weeklySubjectProgress,
                             onAddTaskClick = { viewModel.openAddTaskDialog() },
                             onQuickStudyClick = { showQuickStudyDialog = true },
                             onStartStudy = { task -> viewModel.startStudyForTask(task) },
@@ -149,7 +152,14 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                                     restoreState = true
                                 }
                             },
-                            onChangeUserName = { name -> viewModel.setUserName(name) }
+                            onToggleReminder = { task -> viewModel.toggleTaskReminder(task) },
+                            onChangeUserName = { name -> viewModel.setUserName(name) },
+                            onUpdateSubjectTarget = { subject, targetHours ->
+                                viewModel.updateSubjectTargetHours(subject.id, targetHours)
+                            },
+                            onAddNewSubject = {
+                                viewModel.showAddSubjectDialog.value = true
+                            }
                         )
                     }
                     composable(Screen.Schedule.route) {
@@ -162,7 +172,8 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                             onToggleComplete = { task -> viewModel.toggleTaskStatus(task) },
                             onEditTask = { task -> viewModel.openAddTaskDialog(task) },
                             onDuplicateTask = { task -> viewModel.duplicateTask(task) },
-                            onDeleteTask = { task -> viewModel.deleteTask(task) }
+                            onDeleteTask = { task -> viewModel.deleteTask(task) },
+                            onToggleReminder = { task -> viewModel.toggleTaskReminder(task) }
                         )
                     }
                     composable(Screen.Records.route) {
@@ -247,15 +258,18 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                     ActiveStudyTimerDialog(
                         timerState = activeTimerState,
                         timerStyle = currentTimerStyle,
+                        initialFocusMode = isFocusModeRequested,
                         onSelectTimerStyle = { style -> viewModel.setTimerCountdownStyle(style.name) },
                         onPause = { viewModel.pauseTimer() },
                         onResume = { viewModel.resumeTimer() },
                         onAddExtraMinutes = { mins -> viewModel.addExtraMinutes(mins) },
                         onStartBreak = { mins -> viewModel.startBreakTimer(mins) },
                         onFinishAndSave = { markCompleted, notes ->
+                            viewModel.closeFocusMode()
                             viewModel.finishAndSaveTimerSession(markCompleted, notes)
                         },
                         onDismiss = {
+                            viewModel.closeFocusMode()
                             // Don't kill the session, just allow student to minimize back to view dashboard while timer runs
                             viewModel.showTimerDialog.value = false
                         }

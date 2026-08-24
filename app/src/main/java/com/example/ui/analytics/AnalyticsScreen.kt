@@ -42,17 +42,25 @@ fun AnalyticsScreen(
     val totalMinutes = (totalSeconds + 59) / 60
     val totalHours = totalMinutes / 60
 
-    // Weekly & Monthly Average (Past 7 days & 30 days)
-    val past7Days = remember { DateTimeUtils.getPastNDays(7) }
-    val past7DaysSessions = remember(sessions, past7Days) {
-        sessions.filter { it.date in past7Days }
+    // Daily Chart Range State (7D, 14D, 30D)
+    var selectedDailyRange by remember { mutableStateOf("7D") }
+    val daysCount = when (selectedDailyRange) {
+        "14D" -> 14
+        "30D" -> 30
+        else -> 7
     }
-    val past7DaysMinutes = past7DaysSessions.sumOf { (it.durationSeconds + 59) / 60 }
-    val weeklyDailyAverageMinutes = past7DaysMinutes / 7
 
-    // Bar chart data for past 7 days
-    val barChartData = remember(sessions, dailyGoals, past7Days) {
-        past7Days.map { dateIso ->
+    // Weekly & Monthly Average
+    val pastNDays = remember(daysCount) { DateTimeUtils.getPastNDays(daysCount) }
+    val pastNDaysSessions = remember(sessions, pastNDays) {
+        sessions.filter { it.date in pastNDays }
+    }
+    val pastNDaysMinutes = pastNDaysSessions.sumOf { (it.durationSeconds + 59) / 60 }
+    val dailyAverageMinutes = if (daysCount > 0) pastNDaysMinutes / daysCount else 0
+
+    // Bar chart data for chosen range
+    val barChartData = remember(sessions, dailyGoals, pastNDays, userSettings) {
+        pastNDays.map { dateIso ->
             val daySessions = sessions.filter { it.date == dateIso }
             val mins = daySessions.sumOf { (it.durationSeconds + 59) / 60 }
             val goal = dailyGoals.find { it.date == dateIso }?.targetMinutes ?: userSettings.defaultDailyGoalMinutes
@@ -60,12 +68,13 @@ fun AnalyticsScreen(
                 dateIso = dateIso,
                 dayLabel = DateTimeUtils.getDayOfWeekShort(dateIso),
                 studyMinutes = mins,
-                goalMinutes = goal
+                goalMinutes = goal,
+                sessionCount = daySessions.size
             )
         }
     }
 
-    // Subject breakdown distribution
+    // Subject breakdown distribution for bar chart & metrics
     val subjectDistribution = remember(sessions, subjects, totalMinutes) {
         if (totalMinutes == 0) emptyList()
         else {
@@ -77,7 +86,9 @@ fun AnalyticsScreen(
                         subjectName = sub.name,
                         colorHex = sub.colorHex,
                         totalMinutes = subMins,
-                        percentage = subMins.toFloat() / totalMinutes.toFloat()
+                        percentage = subMins.toFloat() / totalMinutes.toFloat(),
+                        sessionCount = subSessions.size,
+                        weeklyGoalHours = sub.targetHoursPerWeek
                     )
                 } else null
             }.sortedByDescending { it.totalMinutes }
@@ -149,9 +160,9 @@ fun AnalyticsScreen(
                     )
 
                     MetricStatCard(
-                        title = "Daily Average (7d)",
-                        value = DateTimeUtils.formatDurationMinutes(weeklyDailyAverageMinutes),
-                        subtitle = "${past7DaysMinutes / 60}h total this week",
+                        title = "Daily Average ($selectedDailyRange)",
+                        value = DateTimeUtils.formatDurationMinutes(dailyAverageMinutes),
+                        subtitle = "${pastNDaysMinutes / 60}h total in period",
                         icon = Icons.Default.ShowChart,
                         accentColor = Color(0xFF10B981),
                         modifier = Modifier.weight(1f)
@@ -183,12 +194,23 @@ fun AnalyticsScreen(
             }
         }
 
-        // Bar Chart (7 Days)
+        // 1. Daily Study Progress Bar Chart (Interactive 7D / 14D / 30D)
         item {
-            DailyStudyBarChart(data = barChartData)
+            DailyStudyBarChart(
+                data = barChartData,
+                selectedRange = selectedDailyRange,
+                onRangeChange = { selectedDailyRange = it }
+            )
         }
 
-        // Subject Breakdown Donut Chart
+        // 2. Time Spent Per Subject Bar Chart
+        item {
+            SubjectTimeSpentBarChart(
+                distribution = subjectDistribution
+            )
+        }
+
+        // 3. Subject Share Donut Chart
         item {
             SubjectDistributionPieCard(distribution = subjectDistribution)
         }

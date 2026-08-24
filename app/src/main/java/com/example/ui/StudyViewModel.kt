@@ -8,6 +8,7 @@ import com.example.data.model.DailyGoal
 import com.example.data.model.StudySession
 import com.example.data.model.StudyTask
 import com.example.data.model.Subject
+import com.example.data.model.SubjectWeeklyProgress
 import com.example.data.model.TaskPriority
 import com.example.data.model.TaskStatus
 import com.example.data.preferences.UserPreferencesManager
@@ -17,6 +18,7 @@ import com.example.ui.timer.ActiveTimerState
 import com.example.ui.timer.TimerMode
 import com.example.util.DateTimeUtils
 import com.example.util.NotificationHelper
+import com.example.util.TaskReminderScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -66,12 +68,40 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     val todayGoal: StateFlow<DailyGoal?> = repository.getGoalForDate(todayDateString)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val weeklySubjectProgress: StateFlow<List<SubjectWeeklyProgress>> = combine(
+        allSubjects,
+        allSessions
+    ) { subjects, sessions ->
+        val weekDates = DateTimeUtils.getCurrentWeekDates()
+        val thisWeekSessions = sessions.filter { it.date in weekDates }
+
+        subjects.map { subject ->
+            val subSessions = thisWeekSessions.filter {
+                it.subjectId == subject.id || it.subjectName.equals(subject.name, ignoreCase = true)
+            }
+            val totalStudiedMins = subSessions.sumOf { (it.durationSeconds + 59) / 60 }
+            val targetMins = (subject.targetHoursPerWeek * 60).toInt().coerceAtLeast(1)
+            val ratio = (totalStudiedMins.toFloat() / targetMins.toFloat()).coerceIn(0f, 1f)
+            val isMet = totalStudiedMins >= targetMins && targetMins > 0
+
+            SubjectWeeklyProgress(
+                subject = subject,
+                studiedMinutesThisWeek = totalStudiedMins,
+                targetMinutesThisWeek = targetMins,
+                progressRatio = ratio,
+                isGoalMet = isMet,
+                sessionCount = subSessions.size
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // UI state navigation & dialogs
     val activeTab = MutableStateFlow(0) // 0: Home, 1: Schedule, 2: Records, 3: Analytics, 4: Settings
     val showAddTaskDialog = MutableStateFlow(false)
     val taskToEdit = MutableStateFlow<StudyTask?>(null)
     val showAddSubjectDialog = MutableStateFlow(false)
     val showTimerDialog = MutableStateFlow(false)
+    val isFocusModeRequested = MutableStateFlow(false)
     val searchQuery = MutableStateFlow("")
     val recordViewMode = MutableStateFlow(0) // 0: History, 1: Calendar
 
@@ -154,6 +184,11 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
                     isPomodoro = isPomodoro
                 )
                 repository.updateTask(updated)
+                if (reminderEnabled && updated.status != TaskStatus.COMPLETED) {
+                    TaskReminderScheduler.scheduleReminder(getApplication(), updated)
+                } else {
+                    TaskReminderScheduler.cancelReminder(getApplication(), updated.id)
+                }
             } else {
                 val newTask = StudyTask(
                     title = title,
@@ -171,7 +206,11 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
                     isPomodoro = isPomodoro,
                     status = TaskStatus.NOT_STARTED
                 )
-                repository.insertTask(newTask)
+                val insertedId = repository.insertTask(newTask)
+                if (reminderEnabled) {
+                    val taskWithId = newTask.copy(id = insertedId)
+                    TaskReminderScheduler.scheduleReminder(getApplication(), taskWithId)
+                }
             }
             withContext(Dispatchers.Main) {
                 closeAddTaskDialog()
@@ -181,6 +220,7 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteTask(task: StudyTask) {
         viewModelScope.launch(Dispatchers.IO) {
+            TaskReminderScheduler.cancelReminder(getApplication(), task.id)
             repository.deleteTask(task)
         }
     }
@@ -194,7 +234,27 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
                 completedDurationMinutes = 0,
                 createdAt = System.currentTimeMillis()
             )
-            repository.insertTask(duplicate)
+            val insertedId = repository.insertTask(duplicate)
+            if (duplicate.reminderEnabled) {
+                TaskReminderScheduler.scheduleReminder(getApplication(), duplicate.copy(id = insertedId))
+            }
+        }
+    }
+
+    fun toggleTaskReminder(task: StudyTask) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val newEnabled = !task.reminderEnabled
+            val mins = if (task.reminderMinutesBefore > 0) task.reminderMinutesBefore else 15
+            val updated = task.copy(
+                reminderEnabled = newEnabled,
+                reminderMinutesBefore = mins
+            )
+            repository.updateTask(updated)
+            if (newEnabled && updated.status != TaskStatus.COMPLETED) {
+                TaskReminderScheduler.scheduleReminder(getApplication(), updated)
+            } else {
+                TaskReminderScheduler.cancelReminder(getApplication(), task.id)
+            }
         }
     }
 
@@ -211,6 +271,11 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
                 0
             }
             repository.updateTaskStatus(task.id, newStatus, completedMinutes)
+            if (newStatus == TaskStatus.COMPLETED) {
+                TaskReminderScheduler.cancelReminder(getApplication(), task.id)
+            } else if (task.reminderEnabled) {
+                TaskReminderScheduler.scheduleReminder(getApplication(), task.copy(status = newStatus))
+            }
             recalculateTodayProgress()
         }
     }
@@ -255,6 +320,20 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
         )
         showTimerDialog.value = true
         startTimerJob()
+    }
+
+    fun startStudyInFocusMode(task: StudyTask) {
+        startStudyForTask(task)
+        isFocusModeRequested.value = true
+    }
+
+    fun openFocusMode() {
+        isFocusModeRequested.value = true
+        showTimerDialog.value = true
+    }
+
+    fun closeFocusMode() {
+        isFocusModeRequested.value = false
     }
 
     private fun startTimerJob() {
@@ -439,6 +518,21 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
             repository.insertSubject(subject)
             withContext(Dispatchers.Main) {
                 showAddSubjectDialog.value = false
+            }
+        }
+    }
+
+    fun updateSubject(subject: Subject) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateSubject(subject)
+        }
+    }
+
+    fun updateSubjectTargetHours(subjectId: Long, targetHours: Float) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = repository.getSubjectById(subjectId)
+            if (current != null) {
+                repository.updateSubject(current.copy(targetHoursPerWeek = targetHours))
             }
         }
     }

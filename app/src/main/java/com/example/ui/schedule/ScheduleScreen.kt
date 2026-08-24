@@ -34,7 +34,8 @@ fun ScheduleScreen(
     onToggleComplete: (StudyTask) -> Unit,
     onEditTask: (StudyTask) -> Unit,
     onDuplicateTask: (StudyTask) -> Unit,
-    onDeleteTask: (StudyTask) -> Unit
+    onDeleteTask: (StudyTask) -> Unit,
+    onToggleReminder: (StudyTask) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
 
@@ -202,7 +203,8 @@ fun ScheduleScreen(
                         onToggleComplete = { onToggleComplete(task) },
                         onEdit = { onEditTask(task) },
                         onDuplicate = { onDuplicateTask(task) },
-                        onDelete = { onDeleteTask(task) }
+                        onDelete = { onDeleteTask(task) },
+                        onToggleReminder = { onToggleReminder(task) }
                     )
                 }
             }

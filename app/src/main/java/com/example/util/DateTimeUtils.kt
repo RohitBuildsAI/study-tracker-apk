@@ -101,6 +101,21 @@ object DateTimeUtils {
         return dates
     }
 
+    /**
+     * Returns the 7 date strings (yyyy-MM-dd) for the current week starting from Monday.
+     */
+    fun getCurrentWeekDates(): List<String> {
+        val cal = Calendar.getInstance()
+        cal.firstDayOfWeek = Calendar.MONDAY
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        val dates = mutableListOf<String>()
+        for (i in 0..6) {
+            dates.add(isoFormat.format(cal.time))
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return dates
+    }
+
     fun formatTime(hour: Int, minute: Int): String {
         val cal = Calendar.getInstance()
         cal.set(Calendar.HOUR_OF_DAY, hour)
@@ -183,6 +198,43 @@ object DateTimeUtils {
         }
 
         return days
+    }
+
+    /**
+     * Calculates the exact epoch timestamp in milliseconds when the reminder should fire.
+     * e.g., if date is "2026-08-24", startTime is "06:00 PM", and reminderMinutesBefore is 15,
+     * this returns the epoch millis for "2026-08-24 05:45 PM".
+     */
+    fun calculateReminderTriggerMillis(dateIso: String, startTimeStr: String, reminderMinutesBefore: Int): Long? {
+        if (dateIso.isBlank() || startTimeStr.isBlank()) return null
+        val parsedTime = parseTimeStringToHourMinute(startTimeStr) ?: return null
+        return try {
+            val cal = Calendar.getInstance()
+            val parsedDate = isoFormat.parse(dateIso) ?: return null
+            cal.time = parsedDate
+            cal.set(Calendar.HOUR_OF_DAY, parsedTime.first)
+            cal.set(Calendar.MINUTE, parsedTime.second)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            
+            cal.add(Calendar.MINUTE, -reminderMinutesBefore)
+            cal.timeInMillis
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Formats the exact calculated time when a reminder will be triggered.
+     * e.g. For "06:00 PM" with 15 mins reminder, returns "05:45 PM".
+     */
+    fun getReminderTimeString(startTimeStr: String, reminderMinutesBefore: Int): String? {
+        val start = parseTimeStringToHourMinute(startTimeStr) ?: return null
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, start.first)
+        cal.set(Calendar.MINUTE, start.second)
+        cal.add(Calendar.MINUTE, -reminderMinutesBefore)
+        return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
     }
 }
 

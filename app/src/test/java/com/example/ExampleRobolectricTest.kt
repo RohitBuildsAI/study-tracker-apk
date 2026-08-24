@@ -18,4 +18,12 @@ class ExampleRobolectricTest {
     val appName = context.getString(R.string.app_name)
     assertEquals("StudyTrack", appName)
   }
+
+  @Test
+  fun `motivational quotes provider returns valid quotes`() {
+    val quote = com.example.util.QuoteProvider.getRandomQuote()
+    org.junit.Assert.assertTrue(quote.quote.isNotBlank())
+    org.junit.Assert.assertTrue(quote.author.isNotBlank())
+    org.junit.Assert.assertTrue(com.example.util.QuoteProvider.getAllQuotes().isNotEmpty())
+  }
 }

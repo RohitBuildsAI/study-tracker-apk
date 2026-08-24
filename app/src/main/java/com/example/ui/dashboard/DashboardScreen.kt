@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DailyGoal
 import com.example.data.model.StudyTask
+import com.example.data.model.Subject
+import com.example.data.model.SubjectWeeklyProgress
 import com.example.data.model.TaskStatus
 import com.example.data.preferences.UserSettings
 import com.example.ui.components.*
@@ -32,6 +34,7 @@ fun DashboardScreen(
     tasks: List<StudyTask>,
     dailyGoal: DailyGoal?,
     userSettings: UserSettings,
+    weeklySubjectProgress: List<SubjectWeeklyProgress> = emptyList(),
     onAddTaskClick: () -> Unit,
     onQuickStudyClick: () -> Unit,
     onStartStudy: (StudyTask) -> Unit,
@@ -40,7 +43,10 @@ fun DashboardScreen(
     onDuplicateTask: (StudyTask) -> Unit,
     onDeleteTask: (StudyTask) -> Unit,
     onNavigateToSchedule: () -> Unit,
-    onChangeUserName: (String) -> Unit = {}
+    onToggleReminder: (StudyTask) -> Unit = {},
+    onChangeUserName: (String) -> Unit = {},
+    onUpdateSubjectTarget: (Subject, Float) -> Unit = { _, _ -> },
+    onAddNewSubject: () -> Unit = {}
 ) {
     val greeting = remember { DateTimeUtils.getGreeting() }
     val todayDateFormatted = remember { DateTimeUtils.formatDisplayDate(DateTimeUtils.getTodayIsoString()) }
@@ -48,6 +54,7 @@ fun DashboardScreen(
 
     var showEditNameDialog by remember { mutableStateOf(false) }
     var editedNameText by remember(userSettings.userName) { mutableStateOf(userSettings.userName) }
+    var subjectToEditTarget by remember { mutableStateOf<Subject?>(null) }
 
     val completedTasksCount = tasks.count { it.status == TaskStatus.COMPLETED }
     val remainingTasksCount = tasks.size - completedTasksCount
@@ -380,7 +387,18 @@ fun DashboardScreen(
             }
         }
 
-        // 6. Today's Schedule Section Header
+        // 6. Weekly Subject Targets & Progress Indicators
+        item {
+            SubjectWeeklyTargetsSection(
+                weeklyProgressList = weeklySubjectProgress,
+                onEditSubjectTarget = { subject ->
+                    subjectToEditTarget = subject
+                },
+                onAddNewSubject = onAddNewSubject
+            )
+        }
+
+        // 7. Today's Schedule Section Header
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -407,7 +425,7 @@ fun DashboardScreen(
             }
         }
 
-        // 7. Today's Tasks List or Empty State
+        // 8. Today's Tasks List or Empty State
         if (tasks.isEmpty()) {
             item {
                 Card(
@@ -460,7 +478,8 @@ fun DashboardScreen(
                     onToggleComplete = { onToggleComplete(task) },
                     onEdit = { onEditTask(task) },
                     onDuplicate = { onDuplicateTask(task) },
-                    onDelete = { onDeleteTask(task) }
+                    onDelete = { onDeleteTask(task) },
+                    onToggleReminder = { onToggleReminder(task) }
                 )
             }
         }
@@ -526,4 +545,21 @@ fun DashboardScreen(
             }
         )
     }
+
+    // Edit Subject Target Interactive Dialog
+    subjectToEditTarget?.let { subject ->
+        val currentProgress = weeklySubjectProgress.find { it.subject.id == subject.id }
+        val studiedMins = currentProgress?.studiedMinutesThisWeek ?: 0
+
+        EditSubjectWeeklyTargetDialog(
+            subject = subject,
+            studiedMinutesThisWeek = studiedMins,
+            onDismiss = { subjectToEditTarget = null },
+            onSaveTarget = { newTargetHours ->
+                onUpdateSubjectTarget(subject, newTargetHours)
+                subjectToEditTarget = null
+            }
+        )
+    }
 }
+
