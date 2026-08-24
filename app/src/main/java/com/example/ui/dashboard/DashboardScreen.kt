@@ -39,11 +39,15 @@ fun DashboardScreen(
     onEditTask: (StudyTask) -> Unit,
     onDuplicateTask: (StudyTask) -> Unit,
     onDeleteTask: (StudyTask) -> Unit,
-    onNavigateToSchedule: () -> Unit
+    onNavigateToSchedule: () -> Unit,
+    onChangeUserName: (String) -> Unit = {}
 ) {
     val greeting = remember { DateTimeUtils.getGreeting() }
     val todayDateFormatted = remember { DateTimeUtils.formatDisplayDate(DateTimeUtils.getTodayIsoString()) }
     val quote = remember { MotivationalQuotes.getDailyQuote() }
+
+    var showEditNameDialog by remember { mutableStateOf(false) }
+    var editedNameText by remember(userSettings.userName) { mutableStateOf(userSettings.userName) }
 
     val completedTasksCount = tasks.count { it.status == TaskStatus.COMPLETED }
     val remainingTasksCount = tasks.size - completedTasksCount
@@ -62,28 +66,86 @@ fun DashboardScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 90.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Header Greeting & Date
+        // 1. Header Greeting & Date & Offline Badge
         item {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Offline Pill and Date Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Text(
+                        text = todayDateFormatted,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    // 100% Offline Ready Badge Pill
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF10B981).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+                        modifier = Modifier.testTag("offline_ready_badge")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981))
+                            )
+                            Text(
+                                text = "100% Offline Ready",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF047857)
+                            )
+                        }
+                    }
+                }
+
+                // Greeting, Name & Change Name Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
                         Text(
-                            text = todayDateFormatted,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "$greeting, Alex",
+                            text = "$greeting, ${userSettings.userName}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        IconButton(
+                            onClick = {
+                                editedNameText = userSettings.userName
+                                showEditNameDialog = true
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("change_user_name_header_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Change User Name",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
 
                     // Streak Badge Pill
@@ -402,5 +464,66 @@ fun DashboardScreen(
                 )
             }
         }
+    }
+
+    // Change Name Interactive Dialog
+    if (showEditNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text("Change Your Name", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Enter your display name for personalized greetings and offline streak tracking:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = editedNameText,
+                        onValueChange = { if (it.length <= 30) editedNameText = it },
+                        label = { Text("Display Name") },
+                        placeholder = { Text("e.g. Alex, Maria, David") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("user_name_input_field"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val nameToSave = editedNameText.trim().ifEmpty { "Alex" }
+                        onChangeUserName(nameToSave)
+                        showEditNameDialog = false
+                    },
+                    modifier = Modifier.testTag("save_user_name_btn"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Save Name")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showEditNameDialog = false },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

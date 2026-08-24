@@ -469,4 +469,12 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     fun setDarkMode(mode: String) {
         preferencesManager.updateDarkMode(mode)
     }
+
+    fun setTimerCountdownStyle(styleName: String) {
+        preferencesManager.updateTimerCountdownStyle(styleName)
+    }
+
+    fun setUserName(name: String) {
+        preferencesManager.updateUserName(name)
+    }
 }

@@ -19,6 +19,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.data.model.TimerStyle
 import com.example.ui.analytics.AddSubjectDialog
 import com.example.ui.analytics.AnalyticsScreen
 import com.example.ui.dashboard.DashboardScreen
@@ -147,7 +148,8 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            }
+                            },
+                            onChangeUserName = { name -> viewModel.setUserName(name) }
                         )
                     }
                     composable(Screen.Schedule.route) {
@@ -187,8 +189,10 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                     composable(Screen.Settings.route) {
                         SettingsScreen(
                             userSettings = userSettings,
+                            onChangeUserName = { name -> viewModel.setUserName(name) },
                             onUpdateDailyGoal = { mins -> viewModel.updateTodayGoal(mins) },
                             onUpdatePomodoro = { work, brk -> viewModel.setPomodoroSettings(work, brk) },
+                            onSelectTimerStyle = { styleName -> viewModel.setTimerCountdownStyle(styleName) },
                             onToggleNotifications = { enabled -> viewModel.setNotificationsEnabled(enabled) },
                             onToggleSound = { enabled -> viewModel.setSoundEnabled(enabled) },
                             onToggleVibration = { enabled -> viewModel.setVibrationEnabled(enabled) },
@@ -239,8 +243,11 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
 
                 // Active Timer Overlay / Fullscreen Modal
                 if (showTimerDialog && activeTimerState.isRunning) {
+                    val currentTimerStyle = TimerStyle.fromString(userSettings.timerCountdownStyle)
                     ActiveStudyTimerDialog(
                         timerState = activeTimerState,
+                        timerStyle = currentTimerStyle,
+                        onSelectTimerStyle = { style -> viewModel.setTimerCountdownStyle(style.name) },
                         onPause = { viewModel.pauseTimer() },
                         onResume = { viewModel.resumeTimer() },
                         onAddExtraMinutes = { mins -> viewModel.addExtraMinutes(mins) },

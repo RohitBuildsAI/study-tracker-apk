@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class UserSettings(
+    val userName: String = "Alex",
     val defaultDailyGoalMinutes: Int = 180,
     val pomodoroWorkMinutes: Int = 25,
     val pomodoroBreakMinutes: Int = 5,
@@ -16,7 +17,9 @@ data class UserSettings(
     val currentStreak: Int = 1,
     val longestStreak: Int = 1,
     val lastStudyDate: String = "",
-    val darkModeSetting: String = "SYSTEM" // SYSTEM, LIGHT, DARK
+    val darkModeSetting: String = "SYSTEM", // SYSTEM, LIGHT, DARK
+    val timerCountdownStyle: String = "CleanDigital", // FlipClock, RetroSplit, VintageTick, ChronosAnalog, GhostOutline, CleanDigital
+    val offlineModeAlwaysActive: Boolean = true
 )
 
 class UserPreferencesManager(context: Context) {
@@ -27,6 +30,7 @@ class UserPreferencesManager(context: Context) {
 
     private fun loadSettings(): UserSettings {
         return UserSettings(
+            userName = prefs.getString("user_name", "Alex") ?: "Alex",
             defaultDailyGoalMinutes = prefs.getInt("default_daily_goal", 180),
             pomodoroWorkMinutes = prefs.getInt("pomodoro_work", 25),
             pomodoroBreakMinutes = prefs.getInt("pomodoro_break", 5),
@@ -36,8 +40,16 @@ class UserPreferencesManager(context: Context) {
             currentStreak = prefs.getInt("current_streak", 1),
             longestStreak = prefs.getInt("longest_streak", 1),
             lastStudyDate = prefs.getString("last_study_date", "") ?: "",
-            darkModeSetting = prefs.getString("dark_mode_setting", "SYSTEM") ?: "SYSTEM"
+            darkModeSetting = prefs.getString("dark_mode_setting", "SYSTEM") ?: "SYSTEM",
+            timerCountdownStyle = prefs.getString("timer_countdown_style", "CleanDigital") ?: "CleanDigital",
+            offlineModeAlwaysActive = true
         )
+    }
+
+    fun updateUserName(name: String) {
+        val trimmed = name.trim().ifEmpty { "Alex" }
+        prefs.edit().putString("user_name", trimmed).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(userName = trimmed)
     }
 
     fun updateDefaultDailyGoal(minutes: Int) {
@@ -74,6 +86,11 @@ class UserPreferencesManager(context: Context) {
     fun updateDarkMode(mode: String) {
         prefs.edit().putString("dark_mode_setting", mode).apply()
         _settingsFlow.value = _settingsFlow.value.copy(darkModeSetting = mode)
+    }
+
+    fun updateTimerCountdownStyle(styleName: String) {
+        prefs.edit().putString("timer_countdown_style", styleName).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(timerCountdownStyle = styleName)
     }
 
     fun recordStudyDate(todayDate: String, goalMet: Boolean) {
