@@ -22,6 +22,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.data.model.TimerStyle
 import com.example.ui.analytics.AddSubjectDialog
 import com.example.ui.analytics.AnalyticsScreen
+import com.example.ui.components.WeeklyStudySummaryDialog
 import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.navigation.Screen
 import com.example.ui.records.RecordsScreen
@@ -39,6 +40,7 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
 
     val userSettings by viewModel.userSettings.collectAsStateWithLifecycle()
     val allSubjects by viewModel.allSubjects.collectAsStateWithLifecycle()
+    val currentDate by viewModel.currentDate.collectAsStateWithLifecycle()
     val tasksForToday by viewModel.tasksForToday.collectAsStateWithLifecycle()
     val tasksForSelectedDate by viewModel.tasksForSelectedDate.collectAsStateWithLifecycle()
     val allTasks by viewModel.allTasks.collectAsStateWithLifecycle()
@@ -52,6 +54,7 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
     val taskToEdit by viewModel.taskToEdit.collectAsStateWithLifecycle()
     val showAddSubjectDialog by viewModel.showAddSubjectDialog.collectAsStateWithLifecycle()
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
+    val showWeeklySummaryDialog by viewModel.showWeeklySummaryDialog.collectAsStateWithLifecycle()
     val isFocusModeRequested by viewModel.isFocusModeRequested.collectAsStateWithLifecycle()
     val activeTimerState by viewModel.activeTimerState.collectAsStateWithLifecycle()
 
@@ -136,6 +139,7 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                             dailyGoal = todayGoal,
                             userSettings = userSettings,
                             weeklySubjectProgress = weeklySubjectProgress,
+                            currentDateIso = currentDate,
                             onAddTaskClick = { viewModel.openAddTaskDialog() },
                             onQuickStudyClick = { showQuickStudyDialog = true },
                             onStartStudy = { task -> viewModel.startStudyForTask(task) },
@@ -159,6 +163,9 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                             },
                             onAddNewSubject = {
                                 viewModel.showAddSubjectDialog.value = true
+                            },
+                            onOpenWeeklySummary = {
+                                viewModel.openWeeklySummary()
                             }
                         )
                     }
@@ -183,7 +190,8 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                             dailyGoals = allDailyGoals,
                             userSettings = userSettings,
                             selectedCalendarDate = selectedDate,
-                            onSelectCalendarDate = { date -> viewModel.setSelectedDate(date) }
+                            onSelectCalendarDate = { date -> viewModel.setSelectedDate(date) },
+                            onOpenWeeklySummary = { viewModel.openWeeklySummary() }
                         )
                     }
                     composable(Screen.Analytics.route) {
@@ -194,7 +202,8 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                             dailyGoals = allDailyGoals,
                             userSettings = userSettings,
                             onAddSubjectClick = { viewModel.showAddSubjectDialog.value = true },
-                            onDeleteSubject = { subject -> viewModel.deleteSubject(subject) }
+                            onDeleteSubject = { subject -> viewModel.deleteSubject(subject) },
+                            onOpenWeeklySummary = { viewModel.openWeeklySummary() }
                         )
                     }
                     composable(Screen.Settings.route) {
@@ -262,6 +271,7 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                         onSelectTimerStyle = { style -> viewModel.setTimerCountdownStyle(style.name) },
                         onPause = { viewModel.pauseTimer() },
                         onResume = { viewModel.resumeTimer() },
+                        onResumeStudy = { viewModel.resumeStudyAfterBreak() },
                         onAddExtraMinutes = { mins -> viewModel.addExtraMinutes(mins) },
                         onStartBreak = { mins -> viewModel.startBreakTimer(mins) },
                         onFinishAndSave = { markCompleted, notes ->
@@ -273,6 +283,18 @@ fun StudyTrackApp(viewModel: StudyViewModel) {
                             // Don't kill the session, just allow student to minimize back to view dashboard while timer runs
                             viewModel.showTimerDialog.value = false
                         }
+                    )
+                }
+
+                // Weekly Study Summary Text & Metrics Dialog
+                if (showWeeklySummaryDialog) {
+                    WeeklyStudySummaryDialog(
+                        sessions = allSessions,
+                        tasks = allTasks,
+                        dailyGoals = allDailyGoals,
+                        subjects = allSubjects,
+                        userSettings = userSettings,
+                        onDismiss = { viewModel.closeWeeklySummary() }
                     )
                 }
             }

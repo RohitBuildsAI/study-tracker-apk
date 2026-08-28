@@ -42,6 +42,7 @@ fun ActiveStudyTimerDialog(
     onSelectTimerStyle: (TimerStyle) -> Unit = {},
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onResumeStudy: () -> Unit = {},
     onAddExtraMinutes: (Int) -> Unit,
     onStartBreak: (Int) -> Unit,
     onFinishAndSave: (markCompleted: Boolean, notes: String) -> Unit,
@@ -49,10 +50,21 @@ fun ActiveStudyTimerDialog(
 ) {
     var showNotesInput by remember { mutableStateOf(false) }
     var showStylePickerModal by remember { mutableStateOf(false) }
+    var showEarlyFinishDialog by remember { mutableStateOf(false) }
     var sessionNotes by remember { mutableStateOf("") }
     var isFullScreenMode by remember { mutableStateOf(false) }
     var isFocusMode by remember { mutableStateOf(initialFocusMode) }
     var isKeepScreenOn by remember { mutableStateOf(true) } // Enabled by default to prevent sleeping
+
+    val handleFinishStudyClick: () -> Unit = {
+        val currentElapsed = if (timerState.isBreak) timerState.savedStudyElapsedSeconds else timerState.elapsedSeconds
+        val currentTarget = if (timerState.isBreak) timerState.savedStudyTargetSeconds else timerState.targetSeconds
+        if (currentTarget > 0 && currentElapsed < currentTarget) {
+            showEarlyFinishDialog = true
+        } else {
+            onFinishAndSave(true, sessionNotes)
+        }
+    }
 
     val context = LocalContext.current
 
@@ -91,6 +103,7 @@ fun ActiveStudyTimerDialog(
                 timerStyle = timerStyle,
                 onPause = onPause,
                 onResume = onResume,
+                onResumeStudy = onResumeStudy,
                 onFinish = { markCompleted, notes -> onFinishAndSave(markCompleted, notes) },
                 onExitFocusMode = { isFocusMode = false }
             )
@@ -209,7 +222,7 @@ fun ActiveStudyTimerDialog(
                             .fillMaxWidth()
                     ) {
                         Text(
-                            text = taskTitle,
+                            text = if (timerState.isBreak) "☕ Break Time (Rest & Recharge)" else taskTitle,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFF8FAFC),
@@ -218,8 +231,13 @@ fun ActiveStudyTimerDialog(
                         )
 
                         if (timerState.targetSeconds > 0) {
+                            val remainingStudySec = maxOf(0, timerState.savedStudyTargetSeconds - timerState.savedStudyElapsedSeconds)
                             Text(
-                                text = "Target: ${DateTimeUtils.formatDurationSeconds(timerState.targetSeconds)}  •  Elapsed: ${DateTimeUtils.formatDurationSeconds(timerState.elapsedSeconds)}",
+                                text = if (timerState.isBreak) {
+                                    "Break: ${DateTimeUtils.formatDurationSeconds(timerState.targetSeconds)}  •  Study Remaining: ${DateTimeUtils.formatDurationSeconds(remainingStudySec)}"
+                                } else {
+                                    "Target: ${DateTimeUtils.formatDurationSeconds(timerState.targetSeconds)}  •  Elapsed: ${DateTimeUtils.formatDurationSeconds(timerState.elapsedSeconds)}"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color(0xFF94A3B8)
                             )
@@ -235,7 +253,7 @@ fun ActiveStudyTimerDialog(
                             targetSeconds = timerState.targetSeconds.toLong(),
                             progress = timerState.progress,
                             isPaused = timerState.isPaused,
-                            subjectColor = subjectColor,
+                            subjectColor = if (timerState.isBreak) Color(0xFFF59E0B) else subjectColor,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -246,94 +264,148 @@ fun ActiveStudyTimerDialog(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // Quick Add Extra Time Buttons
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FilledTonalButton(
-                                onClick = { onAddExtraMinutes(5) },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = Color(0xFF1E293B),
-                                    contentColor = Color(0xFFE2E8F0)
-                                )
-                            ) {
-                                Text("+5 min", fontWeight = FontWeight.Bold)
-                            }
-                            FilledTonalButton(
-                                onClick = { onAddExtraMinutes(15) },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = Color(0xFF1E293B),
-                                    contentColor = Color(0xFFE2E8F0)
-                                )
-                            ) {
-                                Text("+15 min", fontWeight = FontWeight.Bold)
-                            }
-                            FilledTonalButton(
-                                onClick = { onStartBreak(5) },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = Color(0xFF1E293B),
-                                    contentColor = Color(0xFFFBBF24)
-                                )
-                            ) {
-                                Text("☕ 5m Break", fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // Play/Pause & Finish Buttons
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (timerState.isPaused) {
-                                Button(
-                                    onClick = onResume,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(56.dp)
-                                        .testTag("fullscreen_resume_btn"),
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
-                                ) {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Resume", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                }
-                            } else {
-                                Button(
-                                    onClick = onPause,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(56.dp)
-                                        .testTag("fullscreen_pause_btn"),
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569))
-                                ) {
-                                    Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(24.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Pause", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
+                        if (timerState.isBreak) {
+                            // Primary Action in Break Mode: Start Study Countdown
                             Button(
-                                onClick = { onFinishAndSave(true, sessionNotes) },
+                                onClick = onResumeStudy,
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .fillMaxWidth()
                                     .height(56.dp)
-                                    .testTag("fullscreen_finish_btn"),
+                                    .testTag("fullscreen_start_study_btn"),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = subjectColor,
-                                    contentColor = Color.White
-                                )
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
                             ) {
-                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Finish", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("Start Study Countdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FilledTonalButton(
+                                    onClick = { onAddExtraMinutes(3) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF1E293B),
+                                        contentColor = Color(0xFFFBBF24)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("+3m Break", fontWeight = FontWeight.Bold)
+                                }
+                                FilledTonalButton(
+                                    onClick = { onAddExtraMinutes(5) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF1E293B),
+                                        contentColor = Color(0xFFFBBF24)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("+5m Break", fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = handleFinishStudyClick,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Finish", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        } else {
+                            // Quick Add Extra Time Buttons
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FilledTonalButton(
+                                    onClick = { onAddExtraMinutes(5) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF1E293B),
+                                        contentColor = Color(0xFFE2E8F0)
+                                    )
+                                ) {
+                                    Text("+5 min", fontWeight = FontWeight.Bold)
+                                }
+                                FilledTonalButton(
+                                    onClick = { onAddExtraMinutes(15) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF1E293B),
+                                        contentColor = Color(0xFFE2E8F0)
+                                    )
+                                ) {
+                                    Text("+15 min", fontWeight = FontWeight.Bold)
+                                }
+                                FilledTonalButton(
+                                    onClick = { onStartBreak(5) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF1E293B),
+                                        contentColor = Color(0xFFFBBF24)
+                                    )
+                                ) {
+                                    Text("☕ 5m Break", fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            // Play/Pause & Finish Buttons
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (timerState.isPaused) {
+                                    Button(
+                                        onClick = onResume,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(56.dp)
+                                            .testTag("fullscreen_resume_btn"),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Resume", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = onPause,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(56.dp)
+                                            .testTag("fullscreen_pause_btn"),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569))
+                                    ) {
+                                        Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(24.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Pause", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Button(
+                                    onClick = handleFinishStudyClick,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(56.dp)
+                                        .testTag("fullscreen_finish_btn"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = subjectColor,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Finish", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -546,13 +618,29 @@ fun ActiveStudyTimerDialog(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        SubjectBadge(
-                            subjectName = timerState.subjectName,
-                            colorHex = timerState.subjectColorHex
-                        )
+                        if (timerState.isBreak) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                                border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(text = "☕ Break Time", fontWeight = FontWeight.Bold, color = Color(0xFFD97706), style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        } else {
+                            SubjectBadge(
+                                subjectName = timerState.subjectName,
+                                colorHex = timerState.subjectColorHex
+                            )
+                        }
 
                         Text(
-                            text = taskTitle,
+                            text = if (timerState.isBreak) "☕ Break Time (Rest & Recharge)" else taskTitle,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -560,8 +648,13 @@ fun ActiveStudyTimerDialog(
                         )
 
                         if (timerState.targetSeconds > 0) {
+                            val remainingStudySec = maxOf(0, timerState.savedStudyTargetSeconds - timerState.savedStudyElapsedSeconds)
                             Text(
-                                text = "Target: ${DateTimeUtils.formatDurationSeconds(timerState.targetSeconds)}  •  Elapsed: ${DateTimeUtils.formatDurationSeconds(timerState.elapsedSeconds)}",
+                                text = if (timerState.isBreak) {
+                                    "Break: ${DateTimeUtils.formatDurationSeconds(timerState.targetSeconds)}  •  Study Remaining: ${DateTimeUtils.formatDurationSeconds(remainingStudySec)}"
+                                } else {
+                                    "Target: ${DateTimeUtils.formatDurationSeconds(timerState.targetSeconds)}  •  Elapsed: ${DateTimeUtils.formatDurationSeconds(timerState.elapsedSeconds)}"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -578,7 +671,7 @@ fun ActiveStudyTimerDialog(
                         targetSeconds = timerState.targetSeconds.toLong(),
                         progress = timerState.progress,
                         isPaused = timerState.isPaused,
-                        subjectColor = subjectColor,
+                        subjectColor = if (timerState.isBreak) Color(0xFFF59E0B) else subjectColor,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
 
@@ -607,8 +700,10 @@ fun ActiveStudyTimerDialog(
                                 .padding(vertical = 8.dp)
                                 .testTag("target_reached_banner"),
                             shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.15f)),
-                            border = BorderStroke(1.dp, Color(0xFF10B981))
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (timerState.isBreak) Color(0xFFFEF3C7) else Color(0xFF10B981).copy(alpha = 0.15f)
+                            ),
+                            border = BorderStroke(1.dp, if (timerState.isBreak) Color(0xFFF59E0B) else Color(0xFF10B981))
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
@@ -616,154 +711,289 @@ fun ActiveStudyTimerDialog(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "🎉 Target Duration Reached!",
+                                    text = if (timerState.isBreak) "☕ Break Time is Over!" else "🎉 Target Duration Reached!",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF065F46)
+                                    color = if (timerState.isBreak) Color(0xFF92400E) else Color(0xFF065F46)
                                 )
                                 Text(
-                                    text = "Great progress! Would you like to continue studying or finish and save this task?",
+                                    text = if (timerState.isBreak) {
+                                        "Hope you feel refreshed! Ready to start your study countdown?"
+                                    } else {
+                                        "Great progress! Would you like to continue studying or finish and save this task?"
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     textAlign = TextAlign.Center,
-                                    color = Color(0xFF065F46)
+                                    color = if (timerState.isBreak) Color(0xFF92400E) else Color(0xFF065F46)
                                 )
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
+                                if (timerState.isBreak) {
                                     Button(
-                                        onClick = { onAddExtraMinutes(10) },
-                                        modifier = Modifier.weight(1f),
-                                        colors = ButtonDefaults.buttonColors(containerColor = subjectColor),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Text("+10 min")
-                                    }
-                                    Button(
-                                        onClick = { onStartBreak(5) },
-                                        modifier = Modifier.weight(1f),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Text("5m Break")
-                                    }
-                                    Button(
-                                        onClick = { onFinishAndSave(true, sessionNotes) },
-                                        modifier = Modifier.weight(1f),
+                                        onClick = onResumeStudy,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .testTag("break_start_study_btn"),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                        shape = RoundedCornerShape(10.dp)
+                                        shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Text("Complete")
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("▶ Start Study Countdown", fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { onAddExtraMinutes(3) },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("+3m Break")
+                                        }
+                                        Button(
+                                            onClick = handleFinishStudyClick,
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569)),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("Finish Session")
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { onAddExtraMinutes(10) },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.buttonColors(containerColor = subjectColor),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("+10 min")
+                                        }
+                                        Button(
+                                            onClick = { onStartBreak(5) },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("5m Break")
+                                        }
+                                        Button(
+                                            onClick = { onFinishAndSave(true, sessionNotes) },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("Complete")
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Quick Add Time Presets
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(
-                            onClick = { onAddExtraMinutes(5) },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.testTag("add_5min_btn")
+                    // Quick Add Time Presets / Quick Break Actions
+                    if (timerState.isBreak) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("+5 min", fontWeight = FontWeight.SemiBold)
+                            OutlinedButton(
+                                onClick = { onAddExtraMinutes(3) },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                                modifier = Modifier.testTag("add_3min_break_btn")
+                            ) {
+                                Text("+3m Break", fontWeight = FontWeight.SemiBold, color = Color(0xFFD97706))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = { onAddExtraMinutes(5) },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                                modifier = Modifier.testTag("add_5min_break_btn")
+                            ) {
+                                Text("+5m Break", fontWeight = FontWeight.SemiBold, color = Color(0xFFD97706))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = onResumeStudy,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                modifier = Modifier.testTag("end_break_start_study_btn")
+                            ) {
+                                Text("▶ Study Now", fontWeight = FontWeight.Bold)
+                            }
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedButton(
-                            onClick = { onAddExtraMinutes(15) },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.testTag("add_15min_btn")
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("+15 min", fontWeight = FontWeight.SemiBold)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedButton(
-                            onClick = { onStartBreak(5) },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.testTag("take_break_btn")
-                        ) {
-                            Text("☕ 5m Break", fontWeight = FontWeight.SemiBold)
+                            OutlinedButton(
+                                onClick = { onAddExtraMinutes(5) },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.testTag("add_5min_btn")
+                            ) {
+                                Text("+5 min", fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = { onAddExtraMinutes(15) },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.testTag("add_15min_btn")
+                            ) {
+                                Text("+15 min", fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = { onStartBreak(5) },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.testTag("take_break_btn")
+                            ) {
+                                Text("☕ 5m Break", fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
                     // Primary Bottom Controls: Pause/Resume & Finish
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Play/Pause Button
-                        if (timerState.isPaused) {
+                    if (timerState.isBreak) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Button(
-                                onClick = onResume,
+                                onClick = onResumeStudy,
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(54.dp)
-                                    .testTag("resume_timer_btn"),
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .testTag("start_study_countdown_btn"),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Resume",
+                                    text = "Start Study Countdown",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                        } else {
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (timerState.isPaused) {
+                                    OutlinedButton(
+                                        onClick = onResume,
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Resume Break")
+                                    }
+                                } else {
+                                    OutlinedButton(
+                                        onClick = onPause,
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Pause Break")
+                                    }
+                                }
+                                Button(
+                                    onClick = handleFinishStudyClick,
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569))
+                                ) {
+                                    Text("Finish")
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Play/Pause Button
+                            if (timerState.isPaused) {
+                                Button(
+                                    onClick = onResume,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(54.dp)
+                                        .testTag("resume_timer_btn"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Resume",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            } else {
+                                Button(
+                                    onClick = onPause,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(54.dp)
+                                        .testTag("pause_timer_btn"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                ) {
+                                    Icon(Icons.Default.Pause, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Pause",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            // Finish / Stop Button
                             Button(
-                                onClick = onPause,
+                                onClick = handleFinishStudyClick,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(54.dp)
-                                    .testTag("pause_timer_btn"),
+                                    .testTag("finish_timer_btn"),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
                             ) {
-                                Icon(Icons.Default.Pause, contentDescription = null)
+                                Icon(Icons.Default.Check, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Pause",
+                                    text = "Finish",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                        }
-
-                        // Finish / Stop Button
-                        Button(
-                            onClick = { onFinishAndSave(true, sessionNotes) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(54.dp)
-                                .testTag("finish_timer_btn"),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Finish",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
                         }
                     }
                 }
@@ -866,6 +1096,121 @@ fun ActiveStudyTimerDialog(
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // EARLY FINISH DIALOG (Pause & Resume Later vs Complete Full Task)
+        // =========================================================================
+        if (showEarlyFinishDialog) {
+            Dialog(
+                onDismissRequest = { showEarlyFinishDialog = false }
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(56.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.HourglassTop,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Save Study Progress?",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
+                            val studiedSec = if (timerState.isBreak) timerState.savedStudyElapsedSeconds else timerState.elapsedSeconds
+                            val targetSec = if (timerState.isBreak) timerState.savedStudyTargetSeconds else timerState.targetSeconds
+                            val remSec = maxOf(0, targetSec - studiedSec)
+
+                            Text(
+                                text = "You've studied ${DateTimeUtils.formatDurationSeconds(studiedSec)} of your ${DateTimeUtils.formatDurationSeconds(targetSec)} countdown.\n(${DateTimeUtils.formatDurationSeconds(remSec)} remaining).",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // 1. Save Progress & Resume Later
+                            Button(
+                                onClick = {
+                                    showEarlyFinishDialog = false
+                                    onFinishAndSave(false, sessionNotes)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("save_and_resume_later_btn"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            ) {
+                                Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Save Progress & Resume Later", fontWeight = FontWeight.Bold)
+                            }
+
+                            // 2. Mark Task Completed
+                            OutlinedButton(
+                                onClick = {
+                                    showEarlyFinishDialog = false
+                                    onFinishAndSave(true, sessionNotes)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("mark_completed_early_btn"),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Default.CheckCircleOutline, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Mark Task as Completed")
+                            }
+
+                            // 3. Keep Studying
+                            TextButton(
+                                onClick = { showEarlyFinishDialog = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Keep Studying", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }

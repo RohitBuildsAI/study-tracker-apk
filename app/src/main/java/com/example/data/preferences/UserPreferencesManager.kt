@@ -93,6 +93,21 @@ class UserPreferencesManager(context: Context) {
         _settingsFlow.value = _settingsFlow.value.copy(timerCountdownStyle = styleName)
     }
 
+    fun checkDailyStreak(todayDate: String) {
+        val currentSettings = _settingsFlow.value
+        val lastDate = currentSettings.lastStudyDate
+        if (lastDate.isEmpty() || lastDate == todayDate) {
+            return
+        }
+
+        val isConsecutive = isYesterday(lastDate, todayDate)
+        if (!isConsecutive) {
+            // More than 1 day has passed without studying -> reset current streak to 0
+            prefs.edit().putInt("current_streak", 0).apply()
+            _settingsFlow.value = currentSettings.copy(currentStreak = 0)
+        }
+    }
+
     fun recordStudyDate(todayDate: String, goalMet: Boolean) {
         val currentSettings = _settingsFlow.value
         val lastDate = currentSettings.lastStudyDate
@@ -107,10 +122,8 @@ class UserPreferencesManager(context: Context) {
         val isConsecutive = isYesterday(lastDate, todayDate)
         if (isConsecutive) {
             newStreak += 1
-        } else if (lastDate.isEmpty()) {
-            newStreak = 1
         } else {
-            // Graceful streak reset or keep at 1
+            // Streak started or reset
             newStreak = 1
         }
 
@@ -130,16 +143,32 @@ class UserPreferencesManager(context: Context) {
     }
 
     private fun isYesterday(lastDate: String, todayDate: String): Boolean {
-        if (lastDate.isEmpty()) return false
-        try {
+        if (lastDate.isEmpty() || todayDate.isEmpty()) return false
+        return try {
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-            val last = sdf.parse(lastDate) ?: return false
-            val today = sdf.parse(todayDate) ?: return false
-            val diffMs = today.time - last.time
-            val diffDays = diffMs / (1000 * 60 * 60 * 24)
-            return diffDays == 1L
+            val lastParsed = sdf.parse(lastDate) ?: return false
+            val todayParsed = sdf.parse(todayDate) ?: return false
+
+            val calLast = java.util.Calendar.getInstance().apply {
+                time = lastParsed
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+            val calToday = java.util.Calendar.getInstance().apply {
+                time = todayParsed
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+
+            calLast.get(java.util.Calendar.YEAR) == calToday.get(java.util.Calendar.YEAR) &&
+            calLast.get(java.util.Calendar.DAY_OF_YEAR) == calToday.get(java.util.Calendar.DAY_OF_YEAR)
         } catch (e: Exception) {
-            return false
+            false
         }
     }
 }

@@ -31,6 +31,7 @@ fun SubjectWeeklyTargetsSection(
     weeklyProgressList: List<SubjectWeeklyProgress>,
     onEditSubjectTarget: (Subject) -> Unit,
     onAddNewSubject: () -> Unit,
+    onOpenWeeklySummary: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -80,23 +81,43 @@ fun SubjectWeeklyTargetsSection(
                     )
                 }
 
-                FilledTonalButton(
-                    onClick = onAddNewSubject,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.testTag("add_subject_target_btn")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Subject",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Add",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    FilledTonalIconButton(
+                        onClick = onOpenWeeklySummary,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("open_weekly_summary_from_targets_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Summarize,
+                            contentDescription = "Weekly Summary Report",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    FilledTonalButton(
+                        onClick = onAddNewSubject,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("add_subject_target_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Subject",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Add",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 

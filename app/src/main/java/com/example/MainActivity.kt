@@ -41,6 +41,11 @@ class MainActivity : ComponentActivity() {
             StudyTrackApp(viewModel = studyViewModel)
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        studyViewModel.checkAndRefreshNewDay()
+    }
 }
 
 

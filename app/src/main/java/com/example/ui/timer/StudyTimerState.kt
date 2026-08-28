@@ -19,8 +19,16 @@ data class ActiveTimerState(
     val elapsedSeconds: Int = 0,
     val targetSeconds: Int = 3600, // e.g. 60m
     val isCompletedDialogShown: Boolean = false,
-    val pomodoroCyclesCompleted: Int = 0
+    val pomodoroCyclesCompleted: Int = 0,
+    val savedStudyTargetSeconds: Int = 1500, // Default to 25m work duration
+    val savedStudyElapsedSeconds: Int = 0, // Saved study progress prior to taking break
+    val savedStudyMode: TimerMode = TimerMode.TASK_COUNTDOWN,
+    val cumulativeStudySeconds: Int = 0, // Total study seconds accumulated before/across breaks
+    val initialTaskCompletedSeconds: Int = 0 // Existing completed seconds when resuming this task
 ) {
+    val isBreak: Boolean
+        get() = mode == TimerMode.POMODORO_BREAK
+
     val remainingSeconds: Int
         get() = maxOf(0, targetSeconds - elapsedSeconds)
 

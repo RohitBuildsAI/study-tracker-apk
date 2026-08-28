@@ -44,7 +44,7 @@ fun InteractiveMonthCalendar(
         DateTimeUtils.getMonthDays(calendarYear, calendarMonth)
     }
 
-    val todayIso = remember { DateTimeUtils.getTodayIsoString() }
+    val todayIso = DateTimeUtils.getTodayIsoString()
 
     Card(
         modifier = modifier

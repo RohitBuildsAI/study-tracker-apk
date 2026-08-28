@@ -284,6 +284,46 @@ fun TimelineTaskCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // In-Progress Progress Bar & Remaining Time
+            if (isInProgress && task.completedDurationMinutes > 0 && task.targetDurationMinutes > 0) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Studied ${task.completedDurationMinutes}m of ${task.targetDurationMinutes}m",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val remainingMins = maxOf(0, task.targetDurationMinutes - task.completedDurationMinutes)
+                        Text(
+                            text = "$remainingMins mins remaining",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val taskProgress = (task.completedDurationMinutes.toFloat() / task.targetDurationMinutes.toFloat()).coerceIn(0.02f, 1f)
+                    LinearProgressIndicator(
+                        progress = { taskProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                }
+            }
+
             // Time Info & Action Row
             Row(
                 modifier = Modifier.fillMaxWidth(),

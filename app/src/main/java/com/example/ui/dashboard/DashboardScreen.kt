@@ -35,6 +35,7 @@ fun DashboardScreen(
     dailyGoal: DailyGoal?,
     userSettings: UserSettings,
     weeklySubjectProgress: List<SubjectWeeklyProgress> = emptyList(),
+    currentDateIso: String = DateTimeUtils.getTodayIsoString(),
     onAddTaskClick: () -> Unit,
     onQuickStudyClick: () -> Unit,
     onStartStudy: (StudyTask) -> Unit,
@@ -46,11 +47,12 @@ fun DashboardScreen(
     onToggleReminder: (StudyTask) -> Unit = {},
     onChangeUserName: (String) -> Unit = {},
     onUpdateSubjectTarget: (Subject, Float) -> Unit = { _, _ -> },
-    onAddNewSubject: () -> Unit = {}
+    onAddNewSubject: () -> Unit = {},
+    onOpenWeeklySummary: () -> Unit = {}
 ) {
-    val greeting = remember { DateTimeUtils.getGreeting() }
-    val todayDateFormatted = remember { DateTimeUtils.formatDisplayDate(DateTimeUtils.getTodayIsoString()) }
-    val quote = remember { MotivationalQuotes.getDailyQuote() }
+    val greeting = remember(currentDateIso) { DateTimeUtils.getGreeting() }
+    val todayDateFormatted = remember(currentDateIso) { DateTimeUtils.formatDisplayDate(currentDateIso) }
+    val quote = remember(currentDateIso) { MotivationalQuotes.getDailyQuote() }
 
     var showEditNameDialog by remember { mutableStateOf(false) }
     var editedNameText by remember(userSettings.userName) { mutableStateOf(userSettings.userName) }
@@ -155,24 +157,43 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Streak Badge Pill
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                    // Streak Badge Pill & Weekly Summary Quick Action
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        FilledTonalIconButton(
+                            onClick = onOpenWeeklySummary,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("header_weekly_summary_btn")
                         ) {
-                            Text("🔥", fontSize = 16.sp)
-                            Text(
-                                text = "${userSettings.currentStreak} Days",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            Icon(
+                                imageVector = Icons.Default.Summarize,
+                                contentDescription = "Weekly Study Summary",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
                             )
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("🔥", fontSize = 16.sp)
+                                Text(
+                                    text = "${userSettings.currentStreak}d",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
                         }
                     }
                 }
@@ -394,7 +415,8 @@ fun DashboardScreen(
                 onEditSubjectTarget = { subject ->
                     subjectToEditTarget = subject
                 },
-                onAddNewSubject = onAddNewSubject
+                onAddNewSubject = onAddNewSubject,
+                onOpenWeeklySummary = onOpenWeeklySummary
             )
         }
 

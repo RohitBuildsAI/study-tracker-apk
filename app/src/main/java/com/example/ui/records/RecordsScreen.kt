@@ -44,7 +44,8 @@ fun RecordsScreen(
     dailyGoals: List<DailyGoal>,
     userSettings: UserSettings,
     selectedCalendarDate: String,
-    onSelectCalendarDate: (String) -> Unit
+    onSelectCalendarDate: (String) -> Unit,
+    onOpenWeeklySummary: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var viewMode by remember { mutableIntStateOf(0) } // 0 = History Log, 1 = Calendar View
@@ -120,17 +121,33 @@ fun RecordsScreen(
                     )
                 }
 
-                FilledTonalIconButton(
-                    onClick = {
-                        val report = buildStudySummaryReport(sessions, tasks, userSettings)
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("StudyTrack Report", report)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Study summary copied to clipboard!", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.testTag("export_records_btn")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = "Export Report")
+                    FilledTonalIconButton(
+                        onClick = onOpenWeeklySummary,
+                        modifier = Modifier.testTag("weekly_summary_records_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Summarize,
+                            contentDescription = "Weekly Summary",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    FilledTonalIconButton(
+                        onClick = {
+                            val report = buildStudySummaryReport(sessions, tasks, userSettings)
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("StudyTrack Report", report)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "Study summary copied to clipboard!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.testTag("export_records_btn")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Export Report")
+                    }
                 }
             }
         }

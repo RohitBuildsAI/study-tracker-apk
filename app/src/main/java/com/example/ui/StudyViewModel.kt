@@ -43,6 +43,12 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     val allSubjects: StateFlow<List<Subject>> = repository.allSubjects
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _currentDate = MutableStateFlow(DateTimeUtils.getTodayIsoString())
+    val currentDate: StateFlow<String> = _currentDate.asStateFlow()
+
+    val todayDateString: String
+        get() = _currentDate.value
+
     private val _selectedDate = MutableStateFlow(DateTimeUtils.getTodayIsoString())
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
 
@@ -51,9 +57,9 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
         .flatMapLatest { date -> repository.getTasksForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val todayDateString: String = DateTimeUtils.getTodayIsoString()
-
-    val tasksForToday: StateFlow<List<StudyTask>> = repository.getTasksForDate(todayDateString)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val tasksForToday: StateFlow<List<StudyTask>> = _currentDate
+        .flatMapLatest { date -> repository.getTasksForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allTasks: StateFlow<List<StudyTask>> = repository.allTasks
@@ -65,7 +71,9 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     val allDailyGoals: StateFlow<List<DailyGoal>> = repository.allDailyGoals
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val todayGoal: StateFlow<DailyGoal?> = repository.getGoalForDate(todayDateString)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val todayGoal: StateFlow<DailyGoal?> = _currentDate
+        .flatMapLatest { date -> repository.getGoalForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val weeklySubjectProgress: StateFlow<List<SubjectWeeklyProgress>> = combine(
@@ -101,6 +109,7 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     val taskToEdit = MutableStateFlow<StudyTask?>(null)
     val showAddSubjectDialog = MutableStateFlow(false)
     val showTimerDialog = MutableStateFlow(false)
+    val showWeeklySummaryDialog = MutableStateFlow(false)
     val isFocusModeRequested = MutableStateFlow(false)
     val searchQuery = MutableStateFlow("")
     val recordViewMode = MutableStateFlow(0) // 0: History, 1: Calendar
@@ -114,17 +123,50 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         NotificationHelper.createNotificationChannel(application)
-        ensureTodayGoalInitialized()
+        checkAndRefreshNewDay()
+
+        // Background monitor for date rollovers (e.g. crossing midnight while app is open)
+        viewModelScope.launch {
+            while (isActive) {
+                delay(30_000) // Check every 30 seconds
+                val actualToday = DateTimeUtils.getTodayIsoString()
+                if (actualToday != _currentDate.value) {
+                    checkAndRefreshNewDay()
+                }
+            }
+        }
     }
 
-    private fun ensureTodayGoalInitialized() {
+    /**
+     * Checks if a new day has arrived, refreshes current and selected dates,
+     * validates streak expiry, and initializes today's daily goal.
+     */
+    fun checkAndRefreshNewDay(forceTodaySelected: Boolean = false) {
+        val actualToday = DateTimeUtils.getTodayIsoString()
+        val previousDate = _currentDate.value
+        val isDayChanged = actualToday != previousDate
+
+        if (isDayChanged) {
+            _currentDate.value = actualToday
+            if (_selectedDate.value == previousDate || forceTodaySelected) {
+                _selectedDate.value = actualToday
+            }
+        } else if (forceTodaySelected) {
+            _selectedDate.value = actualToday
+        }
+
+        preferencesManager.checkDailyStreak(actualToday)
+        ensureTodayGoalInitialized(actualToday)
+    }
+
+    private fun ensureTodayGoalInitialized(targetDate: String = DateTimeUtils.getTodayIsoString()) {
         viewModelScope.launch(Dispatchers.IO) {
-            val existing = repository.getGoalForDateDirect(todayDateString)
+            val existing = repository.getGoalForDateDirect(targetDate)
             if (existing == null) {
                 val defaultMinutes = userSettings.value.defaultDailyGoalMinutes
                 repository.insertOrUpdateGoal(
                     DailyGoal(
-                        date = todayDateString,
+                        date = targetDate,
                         targetMinutes = defaultMinutes,
                         completedMinutes = 0,
                         isGoalMet = false
@@ -145,6 +187,14 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     fun openAddTaskDialog(task: StudyTask? = null) {
         taskToEdit.value = task
         showAddTaskDialog.value = true
+    }
+
+    fun openWeeklySummary() {
+        showWeeklySummaryDialog.value = true
+    }
+
+    fun closeWeeklySummary() {
+        showWeeklySummaryDialog.value = false
     }
 
     fun closeAddTaskDialog() {
@@ -284,6 +334,14 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     fun startStudyForTask(task: StudyTask) {
         sessionStartTimeEpoch = System.currentTimeMillis()
         val targetSeconds = task.targetDurationMinutes * 60
+        // If task was already completed or completedDuration is full, start fresh (0s).
+        // Otherwise, resume from the exact completed minutes!
+        val initialElapsedSeconds = if (task.completedDurationMinutes < task.targetDurationMinutes) {
+            task.completedDurationMinutes * 60
+        } else {
+            0
+        }
+
         _activeTimerState.value = ActiveTimerState(
             isRunning = true,
             isPaused = false,
@@ -291,9 +349,12 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
             subjectName = task.subjectName,
             subjectColorHex = task.subjectColorHex,
             mode = if (task.isPomodoro) TimerMode.POMODORO_WORK else TimerMode.TASK_COUNTDOWN,
-            elapsedSeconds = task.completedDurationMinutes * 60,
+            elapsedSeconds = initialElapsedSeconds,
             targetSeconds = if (task.isPomodoro) userSettings.value.pomodoroWorkMinutes * 60 else targetSeconds,
-            isCompletedDialogShown = false
+            isCompletedDialogShown = false,
+            savedStudyTargetSeconds = if (task.isPomodoro) userSettings.value.pomodoroWorkMinutes * 60 else targetSeconds,
+            savedStudyElapsedSeconds = initialElapsedSeconds,
+            initialTaskCompletedSeconds = initialElapsedSeconds
         )
         showTimerDialog.value = true
 
@@ -361,17 +422,27 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun onTargetTimeReached() {
         val app = getApplication<Application>()
+        val isBreak = _activeTimerState.value.isBreak
         if (userSettings.value.vibrationEnabled) {
             NotificationHelper.triggerVibration(app)
         }
         if (userSettings.value.notificationsEnabled) {
             val title = _activeTimerState.value.task?.title ?: _activeTimerState.value.subjectName
-            NotificationHelper.showNotification(
-                app,
-                1001,
-                "Study Goal Reached! 🎉",
-                "Great job! You completed your target session for $title."
-            )
+            if (isBreak) {
+                NotificationHelper.showNotification(
+                    app,
+                    1002,
+                    "☕ Break Time is Over!",
+                    "Hope you feel refreshed! Ready to start your study countdown?"
+                )
+            } else {
+                NotificationHelper.showNotification(
+                    app,
+                    1001,
+                    "Study Goal Reached! 🎉",
+                    "Great job! You completed your target session for $title."
+                )
+            }
         }
     }
 
@@ -392,20 +463,93 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startBreakTimer(breakMinutes: Int = userSettings.value.pomodoroBreakMinutes) {
-        _activeTimerState.value = _activeTimerState.value.copy(
+        val current = _activeTimerState.value
+        val isFromStudy = current.mode != TimerMode.POMODORO_BREAK
+
+        // Check if the current study session or interval had reached its target
+        val hasCompletedCurrentTarget = isFromStudy && current.targetSeconds > 0 && current.elapsedSeconds >= current.targetSeconds
+
+        val newCumulativeStudy = if (isFromStudy && hasCompletedCurrentTarget) {
+            current.cumulativeStudySeconds + current.elapsedSeconds
+        } else {
+            current.cumulativeStudySeconds
+        }
+
+        // If target was reached, next study session will start fresh from 0.
+        // If break was taken mid-session, save the current elapsed progress so countdown continues from where it paused!
+        val savedElapsed = if (isFromStudy) {
+            if (hasCompletedCurrentTarget) 0 else current.elapsedSeconds
+        } else {
+            current.savedStudyElapsedSeconds
+        }
+
+        val savedTarget = if (isFromStudy && current.targetSeconds > 0) {
+            current.targetSeconds
+        } else if (current.savedStudyTargetSeconds > 0) {
+            current.savedStudyTargetSeconds
+        } else {
+            userSettings.value.pomodoroWorkMinutes * 60
+        }
+
+        val savedMode = if (isFromStudy) current.mode else current.savedStudyMode
+
+        _activeTimerState.value = current.copy(
             mode = TimerMode.POMODORO_BREAK,
             elapsedSeconds = 0,
             targetSeconds = breakMinutes * 60,
             isPaused = false,
             isCompletedDialogShown = false,
-            pomodoroCyclesCompleted = _activeTimerState.value.pomodoroCyclesCompleted + 1
+            savedStudyTargetSeconds = savedTarget,
+            savedStudyElapsedSeconds = savedElapsed,
+            savedStudyMode = savedMode,
+            cumulativeStudySeconds = newCumulativeStudy,
+            pomodoroCyclesCompleted = if (hasCompletedCurrentTarget) current.pomodoroCyclesCompleted + 1 else current.pomodoroCyclesCompleted
         )
+        startTimerJob()
+    }
+
+    fun resumeStudyAfterBreak(workDurationMinutes: Int? = null) {
+        val current = _activeTimerState.value
+        val isExplicitDuration = workDurationMinutes != null && workDurationMinutes > 0
+
+        val targetSecs = if (isExplicitDuration) {
+            workDurationMinutes * 60
+        } else if (current.savedStudyTargetSeconds > 0) {
+            current.savedStudyTargetSeconds
+        } else {
+            userSettings.value.pomodoroWorkMinutes * 60
+        }
+
+        // If resuming with explicit new duration, start from 0.
+        // Otherwise, restore the exact elapsed seconds the user had completed prior to the break!
+        val restoredElapsed = if (isExplicitDuration) 0 else current.savedStudyElapsedSeconds
+
+        _activeTimerState.value = current.copy(
+            mode = current.savedStudyMode,
+            elapsedSeconds = restoredElapsed,
+            targetSeconds = targetSecs,
+            isPaused = false,
+            isCompletedDialogShown = false
+        )
+        startTimerJob()
     }
 
     fun finishAndSaveTimerSession(markCompleted: Boolean = true, notes: String = "") {
         val state = _activeTimerState.value
-        val elapsedSec = state.elapsedSeconds
-        val elapsedMins = (elapsedSec + 59) / 60 // Round up to nearest minute
+        // Calculate total actual study time across intervals (excluding break time)
+        val studySecondsInCurrentInterval = if (state.mode != TimerMode.POMODORO_BREAK) {
+            state.elapsedSeconds
+        } else {
+            state.savedStudyElapsedSeconds
+        }
+        val totalStudySec = state.cumulativeStudySeconds + studySecondsInCurrentInterval
+        
+        // Newly studied seconds in this session run (excluding previously saved progress)
+        val newSessionStudySec = maxOf(0, totalStudySec - state.initialTaskCompletedSeconds)
+        val newSessionMins = if (newSessionStudySec > 0) maxOf(1, (newSessionStudySec + 59) / 60) else 0
+
+        // Total task completion minutes
+        val totalTaskCompletedMins = (totalStudySec + 59) / 60
 
         timerJob?.cancel()
         timerJob = null
@@ -417,28 +561,50 @@ class StudyViewModel(application: Application) : AndroidViewModel(application) {
             val subjectColor = state.subjectColorHex.ifEmpty { task?.subjectColorHex ?: "#3B82F6" }
 
             val now = System.currentTimeMillis()
-            val start = if (sessionStartTimeEpoch > 0) sessionStartTimeEpoch else now - (elapsedSec * 1000L)
+            val effectiveDurationSec = if (newSessionStudySec > 0) newSessionStudySec else totalStudySec
+            val start = if (sessionStartTimeEpoch > 0) sessionStartTimeEpoch else now - (effectiveDurationSec * 1000L)
 
-            // 1. Record session
-            val session = StudySession(
-                taskId = task?.id,
-                taskTitle = task?.title ?: "Quick Study: $subjectName",
-                subjectId = subjectId,
-                subjectName = subjectName,
-                subjectColorHex = subjectColor,
-                date = todayDateString,
-                startTimeEpoch = start,
-                endTimeEpoch = now,
-                durationSeconds = elapsedSec,
-                isCompleted = markCompleted,
-                notes = notes
-            )
-            repository.insertSession(session)
+            val isGoalReached = state.targetSeconds > 0 && totalStudySec >= state.targetSeconds
+            val isFinalCompleted = markCompleted || isGoalReached
+
+            // 1. Record session for newly completed study time
+            if (effectiveDurationSec > 0) {
+                val session = StudySession(
+                    taskId = task?.id,
+                    taskTitle = task?.title ?: "Quick Study: $subjectName",
+                    subjectId = subjectId,
+                    subjectName = subjectName,
+                    subjectColorHex = subjectColor,
+                    date = todayDateString,
+                    startTimeEpoch = start,
+                    endTimeEpoch = now,
+                    durationSeconds = effectiveDurationSec,
+                    isCompleted = isFinalCompleted,
+                    notes = notes
+                )
+                repository.insertSession(session)
+            }
 
             // 2. Update task if linked
             if (task != null) {
-                val newStatus = if (markCompleted) TaskStatus.COMPLETED else TaskStatus.IN_PROGRESS
-                repository.updateTaskStatus(task.id, newStatus, elapsedMins)
+                val newStatus = if (isFinalCompleted) {
+                    TaskStatus.COMPLETED
+                } else if (totalTaskCompletedMins > 0) {
+                    TaskStatus.IN_PROGRESS
+                } else {
+                    TaskStatus.NOT_STARTED
+                }
+
+                val finalCompletedMins = if (isFinalCompleted && markCompleted && totalTaskCompletedMins < task.targetDurationMinutes) {
+                    task.targetDurationMinutes
+                } else {
+                    totalTaskCompletedMins
+                }
+
+                repository.updateTaskStatus(task.id, newStatus, finalCompletedMins)
+                if (newStatus == TaskStatus.COMPLETED) {
+                    TaskReminderScheduler.cancelReminder(getApplication(), task.id)
+                }
             }
 
             // 3. Recalculate daily goal and streak
